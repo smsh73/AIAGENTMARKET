@@ -65,10 +65,10 @@ ENV LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/lib:/usr/lib64
 WORKDIR /app
 
 # Prisma 스키마 먼저 복사
-COPY prisma ./prisma
+COPY backend/prisma ./prisma
 
 # 프로덕션 의존성 설치 (네이티브 모듈 빌드를 위해 스크립트 실행)
-COPY package*.json ./
+COPY backend/package*.json ./
 RUN npm install --only=production
 
 # bcrypt, pdfkit, docx 명시적 재빌드 (네이티브 모듈)
@@ -77,11 +77,11 @@ RUN npm rebuild bcrypt --build-from-source || npm install bcrypt --build-from-so
     npm rebuild docx --build-from-source || npm install docx --build-from-source || true
 
 # Prisma 클라이언트 복사
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/backend/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/backend/node_modules/@prisma ./node_modules/@prisma
 
 # 빌드된 파일 복사
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/backend/dist ./dist
 
 # 환경 변수 설정
 ENV NODE_ENV=production

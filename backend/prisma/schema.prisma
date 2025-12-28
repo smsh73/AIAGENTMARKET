@@ -1,0 +1,606 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique @db.VarChar(255)
+  passwordHash String?   @map("password_hash") @db.VarChar(255)
+  name         String    @db.VarChar(255)
+  role         String    @default("user") @db.VarChar(50)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  
+  authProvider      String?   @map("auth_provider") @db.VarChar(50)
+  authProviderId    String?   @map("auth_provider_id") @db.VarChar(255)
+  profileImageUrl   String?   @map("profile_image_url") @db.VarChar(1000)
+  
+  subscriptionPlan      String    @default("free") @map("subscription_plan") @db.VarChar(50)
+  stripeCustomerId      String?   @unique @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId  String?   @map("stripe_subscription_id") @db.VarChar(255)
+  tossCustomerKey       String?   @unique @map("toss_customer_key") @db.VarChar(255)
+  tossBillingKey        String?   @map("toss_billing_key") @db.VarChar(255)
+  subscriptionStartDate DateTime? @map("subscription_start_date")
+  subscriptionEndDate   DateTime? @map("subscription_end_date")
+  
+  signupBonusUsed   Int       @default(0) @map("signup_bonus_used")
+  signupBonusTotal  Int       @default(5) @map("signup_bonus_total")
+  monthlyUsedCount  Int       @default(0) @map("monthly_used_count")
+  monthlyResetAt    DateTime? @map("monthly_reset_at")
+
+  conversations   Conversation[]
+  messages        Message[]
+  documents       Document[]
+  apiKeys         ApiKey[]      @relation("CreatedBy")
+  guardrails      Guardrail[]   @relation("CreatedBy")
+  workflows       Workflow[]
+  logs            Log[]
+  sessions        Session[]
+  usageRecords    UsageRecord[]
+  downloadRecords DownloadRecord[]
+
+  @@unique([authProvider, authProviderId])
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([subscriptionPlan])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+model Conversation {
+  id          Int       @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  title       String?  @db.VarChar(500)
+  topic       String?  @db.VarChar(255)
+  status      String   @default("active") @db.VarChar(50)
+  metadata    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+  documents Document[]
+  workflows Workflow[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([topic])
+  @@map("conversations")
+}
+
+model Message {
+  id             Int       @id @default(autoincrement())
+  conversationId Int       @map("conversation_id")
+  userId         Int       @map("user_id")
+  role           String    @db.VarChar(50)
+  content        String    @db.Text
+  metadata       Json?     @default("{}")
+  tokens         Int?      @default(0)
+  model          String?   @db.VarChar(100)
+  provider       String?   @db.VarChar(50)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([role])
+  @@index([createdAt])
+  @@index([provider])
+  @@map("messages")
+}
+
+model Document {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  conversationId Int?      @map("conversation_id")
+  name           String    @db.VarChar(500)
+  type           String    @db.VarChar(50)
+  size           BigInt    @default(0)
+  s3Key          String    @map("s3_key") @db.VarChar(1000)
+  s3Url          String?   @map("s3_url") @db.VarChar(2000)
+  metadata       Json?     @default("{}")
+  status         String    @default("uploaded") @db.VarChar(50)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  images       DocumentImage[]
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("documents")
+}
+
+model DocumentImage {
+  id          Int      @id @default(autoincrement())
+  documentId  Int      @map("document_id")
+  pageNumber  Int      @default(1) @map("page_number")
+  imageIndex  Int      @default(0) @map("image_index")
+  url         String   @db.VarChar(2000)
+  s3Key       String   @map("s3_key") @db.VarChar(1000)
+  width       Int?
+  height      Int?
+  mimeType    String?  @map("mime_type") @db.VarChar(100)
+  size        Int?
+  ocrText     String?  @map("ocr_text") @db.Text
+  labels      Json?    @default("[]")
+  metadata    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([pageNumber])
+  @@index([createdAt])
+  @@map("document_images")
+}
+
+model ApiKey {
+  id        Int       @id @default(autoincrement())
+  provider  String    @db.VarChar(50)
+  apiKey    String    @map("api_key") @db.Text
+  isActive  Boolean   @default(true) @map("is_active")
+  weight    Decimal   @default(1.0) @db.Decimal(5, 2)
+  metadata  Json?     @default("{}")
+  createdBy Int?      @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([provider, createdBy])
+  @@index([provider])
+  @@index([isActive])
+  @@index([weight])
+  @@index([createdBy])
+  @@map("api_keys")
+}
+
+model Workflow {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  conversationId Int?      @map("conversation_id")
+  name           String    @db.VarChar(255)
+  plan           Json
+  status         String    @default("pending") @db.VarChar(50)
+  currentStep    Int       @default(0) @map("current_step")
+  results        Json?     @default("{}")
+  errors         Json?     @default("{}")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([startedAt])
+  @@map("workflows")
+}
+
+model Log {
+  id            Int       @id @default(autoincrement())
+  userId        Int?      @map("user_id")
+  screenName    String?   @map("screen_name") @db.VarChar(255)
+  screenUrl     String?   @map("screen_url") @db.VarChar(1000)
+  callerFunction String? @map("caller_function") @db.VarChar(255)
+  buttonId      String?   @map("button_id") @db.VarChar(255)
+  calledApi     String?   @map("called_api") @db.VarChar(255)
+  backendApiUrl String?   @map("backend_api_url") @db.VarChar(1000)
+  logType       String    @map("log_type") @db.VarChar(50)
+  message       String?   @db.Text
+  errorCode     String?   @map("error_code") @db.VarChar(100)
+  metadata      Json?     @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([logType])
+  @@index([createdAt])
+  @@index([screenName])
+  @@index([backendApiUrl])
+  @@index([callerFunction])
+  @@map("logs")
+}
+
+model Guardrail {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  pattern     String    @db.Text
+  action      String    @default("block") @db.VarChar(50)
+  isActive    Boolean   @default(true) @map("is_active")
+  priority    Int       @default(0)
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@index([priority])
+  @@index([action])
+  @@index([createdBy])
+  @@map("guardrails")
+}
+
+model Session {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  token        String    @unique @db.VarChar(500)
+  refreshToken String?   @map("refresh_token") @db.VarChar(500)
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  userAgent    String?   @map("user_agent") @db.VarChar(500)
+  expiresAt    DateTime  @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("sessions")
+}
+
+model MCPConnection {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(255)
+  serverUrl   String    @map("server_url") @db.VarChar(1000)
+  serverType  String    @map("server_type") @db.VarChar(50)
+  isActive    Boolean   @default(true) @map("is_active")
+  metadata    Json?     @default("{}")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([serverType])
+  @@index([lastUsedAt])
+  @@map("mcp_connections")
+}
+
+model WorkflowExecution {
+  id          Int       @id @default(autoincrement())
+  workflowId  Int       @map("workflow_id")
+  stepId      String    @map("step_id") @db.VarChar(255)
+  status      String    @db.VarChar(50)
+  input       Json?     @default("{}")
+  output      Json?     @default("{}")
+  error       String?   @db.Text
+  duration    Int?      @default(0)
+  startedAt   DateTime  @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([workflowId])
+  @@index([stepId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("workflow_executions")
+}
+
+model CacheMetadata {
+  id         Int       @id @default(autoincrement())
+  key        String    @unique @db.VarChar(500)
+  prefix     String    @db.VarChar(100)
+  ttl        Int       @default(3600)
+  hitCount   Int       @default(0) @map("hit_count")
+  missCount  Int       @default(0) @map("miss_count")
+  lastHitAt  DateTime? @map("last_hit_at")
+  lastMissAt DateTime? @map("last_miss_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([prefix])
+  @@index([lastHitAt])
+  @@index([createdAt])
+  @@map("cache_metadata")
+}
+
+model AIRequestStats {
+  id          Int       @id @default(autoincrement())
+  provider    String    @db.VarChar(50)
+  date        DateTime  @db.Date
+  requestCount Int      @default(0) @map("request_count")
+  successCount Int      @default(0) @map("success_count")
+  errorCount   Int      @default(0) @map("error_count")
+  avgDuration  Decimal? @map("avg_duration") @db.Decimal(10, 3)
+  totalTokens  BigInt?  @default(0) @map("total_tokens")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, date])
+  @@index([provider])
+  @@index([date])
+  @@map("ai_request_stats")
+}
+
+model SystemSettings {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(255)
+  value     String   @db.Text
+  category  String   @default("general") @db.VarChar(100)
+  description String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([key])
+  @@map("system_settings")
+}
+
+model UsageRecord {
+  id          Int       @id @default(autoincrement())
+  userId      Int?      @map("user_id")
+  ipAddress   String?   @map("ip_address") @db.VarChar(45)
+  requestType String    @map("request_type") @db.VarChar(50)
+  toolMode    String?   @map("tool_mode") @db.VarChar(50)
+  isBilled    Boolean   @default(false) @map("is_billed")
+  billedAmount Decimal? @map("billed_amount") @db.Decimal(10, 2)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@index([requestType])
+  @@map("usage_records")
+}
+
+model DownloadRecord {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  format    String    @db.VarChar(10)
+  title     String?   @db.VarChar(500)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("download_records")
+}
+
+model AnonymousUsage {
+  id          Int       @id @default(autoincrement())
+  ipAddress   String    @map("ip_address") @db.VarChar(45)
+  date        DateTime  @db.Date
+  usageCount  Int       @default(0) @map("usage_count")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([ipAddress, date])
+  @@index([ipAddress])
+  @@index([date])
+  @@map("anonymous_usage")
+}
+
+model SubscriptionPlan {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique @db.VarChar(50)
+  displayName     String    @map("display_name") @db.VarChar(100)
+  description     String?   @db.Text
+  priceMonthly    Decimal?  @map("price_monthly") @db.Decimal(10, 2)
+  pricePerRequest Decimal?  @map("price_per_request") @db.Decimal(10, 2)
+  monthlyRequests Int?      @map("monthly_requests")
+  dailyFreeLimit  Int       @default(2) @map("daily_free_limit")
+  canDownloadPdf  Boolean   @default(false) @map("can_download_pdf")
+  hasPayg         Boolean   @default(false) @map("has_payg")
+  stripePriceId   String?   @map("stripe_price_id") @db.VarChar(255)
+  isActive        Boolean   @default(true) @map("is_active")
+  sortOrder       Int       @default(0) @map("sort_order")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@index([isActive])
+  @@map("subscription_plans")
+}
+
+model PaymentSession {
+  id          Int       @id @default(autoincrement())
+  orderId     String    @unique @map("order_id") @db.VarChar(255)
+  userId      Int       @map("user_id")
+  planName    String    @map("plan_name") @db.VarChar(50)
+  amount      Int
+  orderName   String    @map("order_name") @db.VarChar(255)
+  status      String    @default("pending") @db.VarChar(50)
+  paymentKey  String?   @map("payment_key") @db.VarChar(255)
+  approvedAt  DateTime? @map("approved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payment_sessions")
+}
+
+model PaymentHistory {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  orderId      String    @map("order_id") @db.VarChar(255)
+  paymentKey   String    @map("payment_key") @db.VarChar(255)
+  amount       Int
+  planName     String    @map("plan_name") @db.VarChar(50)
+  status       String    @default("completed") @db.VarChar(50)
+  method       String?   @db.VarChar(50)
+  approvedAt   DateTime? @map("approved_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelReason String?   @map("cancel_reason") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([paymentKey])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payment_history")
+}
+
+model AIAgent {
+  id              Int       @id @default(autoincrement())
+  slug            String    @unique @db.VarChar(100)
+  name            String    @db.VarChar(255)
+  tagline         String    @db.VarChar(500)
+  description     String    @db.Text
+  category        String    @db.VarChar(100)
+  subcategory     String?   @db.VarChar(100)
+  iconUrl         String?   @map("icon_url") @db.VarChar(1000)
+  coverImageUrl   String?   @map("cover_image_url") @db.VarChar(1000)
+  previewImageUrl String?   @map("preview_image_url") @db.VarChar(1000)
+  primaryColor    String    @default("#003366") @map("primary_color") @db.VarChar(20)
+  accentColor     String    @default("#0066CC") @map("accent_color") @db.VarChar(20)
+  aiProvider      String    @map("ai_provider") @db.VarChar(50)
+  modelName       String    @map("model_name") @db.VarChar(100)
+  systemPrompt    String    @map("system_prompt") @db.Text
+  temperature     Decimal   @default(0.7) @db.Decimal(3, 2)
+  maxTokens       Int       @default(4096) @map("max_tokens")
+  features        Json?     @default("[]")
+  pricing         Json?     @default("{}")
+  metadata        Json?     @default("{}")
+  isFeatured      Boolean   @default(false) @map("is_featured")
+  isPublished     Boolean   @default(false) @map("is_published")
+  isNew           Boolean   @default(true) @map("is_new")
+  sortOrder       Int       @default(0) @map("sort_order")
+  viewCount       Int       @default(0) @map("view_count")
+  usageCount      Int       @default(0) @map("usage_count")
+  rating          Decimal   @default(0) @db.Decimal(3, 2)
+  ratingCount     Int       @default(0) @map("rating_count")
+  createdBy       Int?      @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  apiKeys AIAgentApiKey[]
+
+  @@index([slug])
+  @@index([category])
+  @@index([isPublished])
+  @@index([isFeatured])
+  @@index([sortOrder])
+  @@index([createdAt])
+  @@map("ai_agents")
+}
+
+model AIAgentApiKey {
+  id          Int       @id @default(autoincrement())
+  agentId     Int       @map("agent_id")
+  provider    String    @db.VarChar(50)
+  apiKey      String    @map("api_key") @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  metadata    Json?     @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  agent AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, provider])
+  @@index([agentId])
+  @@index([provider])
+  @@index([isActive])
+  @@map("ai_agent_api_keys")
+}
+
+model AgentCategory {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique @db.VarChar(100)
+  name        String    @db.VarChar(255)
+  nameKo      String    @map("name_ko") @db.VarChar(255)
+  description String?   @db.Text
+  iconName    String?   @map("icon_name") @db.VarChar(100)
+  color       String    @default("#003366") @db.VarChar(20)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("agent_categories")
+}
+
+model SlideProject {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  conversationId  Int?      @map("conversation_id")
+  title           String    @db.VarChar(500)
+  projectName     String    @map("project_name") @db.VarChar(500)
+  clientName      String?   @map("client_name") @db.VarChar(255)
+  userRequest     String?   @map("user_request") @db.Text
+  status          String    @default("draft") @db.VarChar(50)
+  totalPages      Int       @default(0) @map("total_pages")
+  metadata        Json?     @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  sections SlideSection[]
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("slide_projects")
+}
+
+model SlideSection {
+  id          Int       @id @default(autoincrement())
+  projectId   Int       @map("project_id")
+  title       String    @db.VarChar(500)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  project SlideProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pages   SlidePage[]
+
+  @@index([projectId])
+  @@index([order])
+  @@map("slide_sections")
+}
+
+model SlidePage {
+  id            Int       @id @default(autoincrement())
+  sectionId     Int       @map("section_id")
+  title         String    @db.VarChar(500)
+  subtitle      String?   @db.VarChar(500)
+  order         Int       @default(0)
+  outline       String?   @db.Text
+  direction     String?   @db.Text
+  keywords      Json?     @default("[]")
+  researchNotes String?   @map("research_notes") @db.Text
+  htmlContent   String?   @map("html_content") @db.Text
+  aiProvider    String?   @map("ai_provider") @db.VarChar(50)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  section SlideSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+  @@index([order])
+  @@map("slide_pages")
+}

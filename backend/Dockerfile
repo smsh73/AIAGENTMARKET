@@ -11,17 +11,18 @@ RUN apk add --no-cache \
     openssl-dev
 
 # Prisma 스키마 먼저 복사 (postinstall 스크립트를 위해 필요)
-COPY prisma ./prisma
+COPY backend/prisma ./prisma
 
 # 의존성 설치 (postinstall 스크립트 스킵 - prisma generate는 나중에 실행)
-COPY package*.json ./
+COPY backend/package*.json ./
 RUN npm install --ignore-scripts
 
 # Prisma 생성
 RUN npx prisma generate
 
 # 소스 코드 복사
-COPY . .
+COPY backend/ ./backend/
+WORKDIR /app/backend
 
 # 빌드 (타입 에러 무시)
 RUN npm run build || (echo "Build completed with type errors (ignored)" && exit 0)

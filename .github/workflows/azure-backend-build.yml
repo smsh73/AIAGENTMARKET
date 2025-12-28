@@ -1,0 +1,47 @@
+name: Build and Push Backend to Azure ACR
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: aionis-backend
+  RESOURCE_GROUP: aionis-rg
+  ACR_NAME: aionisregistry
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Build and push Docker image to ACR
+      run: |
+        az acr build --registry ${{ env.ACR_NAME }} \
+          --image backend:latest \
+          --file backend/Dockerfile \
+          backend/
+
+    - name: Deploy to Azure App Service
+      run: |
+        az webapp config container set \
+          --name ${{ env.AZURE_WEBAPP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --docker-custom-image-name ${{ env.ACR_NAME }}.azurecr.io/backend:latest
+        
+        az webapp restart \
+          --name ${{ env.AZURE_WEBAPP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }}
+

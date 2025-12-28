@@ -32,7 +32,7 @@ jobs:
         az acr build --registry ${{ env.ACR_NAME }} \
           --image backend:latest \
           --file backend/Dockerfile \
-          backend/
+          .
 
     - name: Deploy to Azure App Service
       run: |

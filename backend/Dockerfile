@@ -76,11 +76,11 @@ RUN npm rebuild bcrypt --build-from-source || npm install bcrypt --build-from-so
     npm rebuild pdfkit --build-from-source || npm install pdfkit --build-from-source && \
     npm rebuild docx --build-from-source || npm install docx --build-from-source || true
 
-# Prisma 클라이언트 복사
-COPY --from=builder /app/backend/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/backend/node_modules/@prisma ./node_modules/@prisma
+# Prisma 클라이언트 복사 (builder에서 WORKDIR이 /app이므로 /app/node_modules에 생성됨)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# 빌드된 파일 복사
+# 빌드된 파일 복사 (builder에서 WORKDIR이 /app/backend로 변경되었으므로 /app/backend/dist에 생성됨)
 COPY --from=builder /app/backend/dist ./dist
 
 # 환경 변수 설정
